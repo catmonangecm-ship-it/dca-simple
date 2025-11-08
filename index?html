@@ -443,6 +443,27 @@
             gap: 10px;
         }
 
+        .debug-badge {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .debug-badge:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 1.8em;
@@ -601,6 +622,10 @@
         </div>
     </div>
 
+    <div class="debug-badge" onclick="toggleDebugInfo()">
+        🔍 Logs de debug
+    </div>
+
     <script>
         let web3;
         let userAccount;
@@ -625,37 +650,42 @@
         const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'; // USDT sur BSC
         const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c'; // WBNB sur BSC
         
-        // Agrégateurs et DEX sur BSC
+        // Agrégateurs et DEX sur BSC (adresses vérifiées)
         const DEX_AGGREGATORS = {
             pancakeswap: {
                 name: 'PancakeSwap',
                 router: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
                 icon: '🥞',
-                color: '#d1884f'
+                color: '#d1884f',
+                enabled: true
             },
             biswap: {
                 name: 'Biswap',
                 router: '0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8',
                 icon: '🦎',
-                color: '#1FC7D4'
+                color: '#1FC7D4',
+                enabled: true
             },
             apeswap: {
                 name: 'ApeSwap',
                 router: '0xcF0feBd3f17CEf5b47b0cD257aCf6025c5BFf3b7',
                 icon: '🦍',
-                color: '#A16552'
+                color: '#A16552',
+                enabled: true
             },
-            bakeryswap: {
-                name: 'BakerySwap',
-                router: '0xCDe540d7eAFE93aC5fE6233Bee57E1270D3E330F',
-                icon: '🍞',
-                color: '#FCC15C'
+            babyswap: {
+                name: 'BabySwap',
+                router: '0x325E343f1dE602396E256B67eFd1F61C3A6B38Bd',
+                icon: '👶',
+                color: '#FF6B9D',
+                enabled: true
             },
-            oneInch: {
-                name: '1inch',
-                router: '0x1111111254EEB25477B68fb85Ed929f73A960582',
-                icon: '🦄',
-                color: '#94A6C3'
+            mdex: {
+                name: 'MDEX',
+                router: '0x7DAe51BD3E3376B8c7c4900E9107f12Be3AF1bA8',
+                icon: '🌊',
+                color: '#4A9EFF',
+                enabled: true
             }
         };
 
@@ -1035,9 +1065,21 @@
         }
 
         async function compareAggregators(amount, slippage, crypto) {
+            console.log('🚀 Démarrage de la comparaison des agrégateurs');
+            console.log('Montant:', amount, 'USDT');
+            console.log('Crypto:', crypto.symbol);
+            
             // Afficher la section de comparaison
             document.getElementById('comparisonSection').style.display = 'block';
-            document.getElementById('dexComparison').innerHTML = '<div style="text-align: center; padding: 20px;"><div class="loading-spinner"></div><br><br>Comparaison en cours...</div>';
+            document.getElementById('dexComparison').innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <div class="loading-spinner"></div>
+                    <br><br>
+                    <h3>Comparaison en cours...</h3>
+                    <p>Vérification des prix sur ${Object.keys(DEX_AGGREGATORS).length} agrégateurs</p>
+                    <div id="progressInfo" style="margin-top: 15px; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto;"></div>
+                </div>
+            `;
             
             // Scroll vers la section de comparaison
             document.getElementById('comparisonSection').scrollIntoView({ behavior: 'smooth' });
@@ -1045,12 +1087,22 @@
             const amountInWei = BigInt(Math.floor(amount * 1e18));
             const path = [USDT_ADDRESS, crypto.address];
             
+            console.log('Path:', path);
+            console.log('AmountInWei:', amountInWei.toString());
+            
             const results = [];
+            const progressDiv = document.getElementById('progressInfo');
             
             // Comparer chaque DEX
+            let index = 0;
             for (const [key, dex] of Object.entries(DEX_AGGREGATORS)) {
+                if (!dex.enabled) continue;
+                
+                index++;
+                progressDiv.innerHTML += `<div>⏳ Test de ${dex.icon} ${dex.name}...</div>`;
+                
                 try {
-                    const quote = await getQuoteFromDex(dex.router, amountInWei, path);
+                    const quote = await getQuoteFromDex(dex.router, amountInWei, path, dex.name);
                     results.push({
                         key: key,
                         name: dex.name,
@@ -1060,8 +1112,12 @@
                         amountOut: quote,
                         success: true
                     });
+                    
+                    const amountFormatted = (Number(quote) / 1e18).toFixed(6);
+                    progressDiv.lastChild.innerHTML = `✅ ${dex.icon} ${dex.name}: ${amountFormatted} ${crypto.symbol}`;
+                    
                 } catch (error) {
-                    console.error(`Erreur pour ${dex.name}:`, error);
+                    console.error(`❌ Erreur pour ${dex.name}:`, error);
                     results.push({
                         key: key,
                         name: dex.name,
@@ -1072,8 +1128,40 @@
                         success: false,
                         error: error.message
                     });
+                    
+                    progressDiv.lastChild.innerHTML = `❌ ${dex.icon} ${dex.name}: ${error.message}`;
                 }
+                
+                // Petit délai entre chaque requête
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
+            
+            // Vérifier si au moins un résultat est valide
+            const validResults = results.filter(r => r.success);
+            
+            if (validResults.length === 0) {
+                document.getElementById('dexComparison').innerHTML = `
+                    <div class="alert alert-warning">
+                        <h3>⚠️ Aucun prix trouvé</h3>
+                        <p>Aucun agrégateur n'a pu fournir un prix pour ${crypto.symbol}.</p>
+                        <p><strong>Raisons possibles :</strong></p>
+                        <ul>
+                            <li>Le token n'a pas de liquidité sur BSC</li>
+                            <li>Le token n'est pas disponible sur ces DEX</li>
+                            <li>Problème de connexion au réseau</li>
+                        </ul>
+                        <p style="margin-top: 15px;">
+                            <strong>Suggestion :</strong> Essayez avec BNB, BUSD ou un token plus populaire.
+                        </p>
+                        <button class="btn btn-primary" onclick="closeComparison()" style="margin-top: 15px;">
+                            Fermer
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            console.log('✅ Comparaison terminée:', validResults.length, 'résultats valides');
             
             // Trier par meilleur prix
             results.sort((a, b) => {
@@ -1086,34 +1174,65 @@
             displayComparisonResults(results, amount, slippage, crypto);
         }
 
-        async function getQuoteFromDex(routerAddress, amountIn, path) {
-            // Encoder l'appel à getAmountsOut
-            const data = '0xd06ca61f' + // getAmountsOut function signature
-                amountIn.toString(16).padStart(64, '0') +
-                '0000000000000000000000000000000000000000000000000000000000000040' + // offset pour path
-                '0000000000000000000000000000000000000000000000000000000000000002' + // path.length
-                path[0].substring(2).padStart(64, '0') +
-                path[1].substring(2).padStart(64, '0');
-            
-            const result = await window.ethereum.request({
-                method: 'eth_call',
-                params: [{
-                    to: routerAddress,
-                    data: data
-                }, 'latest']
-            });
-            
-            // Parser le résultat (le dernier montant du tableau amounts)
-            // Le résultat contient un array, on prend le dernier élément
-            const resultHex = result.substring(2);
-            const arrayLengthOffset = parseInt(resultHex.substring(0, 64), 16);
-            const arrayLength = parseInt(resultHex.substring(64, 128), 16);
-            
-            // Le dernier élément est à la position (arrayLength - 1) * 64 après le début du tableau
-            const lastElementOffset = 128 + (arrayLength - 1) * 64;
-            const amountOut = BigInt('0x' + resultHex.substring(lastElementOffset, lastElementOffset + 64));
-            
-            return amountOut;
+        async function getQuoteFromDex(routerAddress, amountIn, path, dexName) {
+            try {
+                console.log(`🔍 Récupération du prix sur ${dexName}...`);
+                console.log('Router:', routerAddress);
+                console.log('AmountIn:', amountIn.toString());
+                console.log('Path:', path);
+                
+                // Encoder l'appel à getAmountsOut
+                const data = '0xd06ca61f' + // getAmountsOut function signature
+                    amountIn.toString(16).padStart(64, '0') +
+                    '0000000000000000000000000000000000000000000000000000000000000040' + // offset pour path
+                    '0000000000000000000000000000000000000000000000000000000000000002' + // path.length
+                    path[0].substring(2).padStart(64, '0') +
+                    path[1].substring(2).padStart(64, '0');
+                
+                const result = await window.ethereum.request({
+                    method: 'eth_call',
+                    params: [{
+                        to: routerAddress,
+                        data: data
+                    }, 'latest']
+                });
+                
+                console.log(`✅ Résultat brut de ${dexName}:`, result);
+                
+                if (!result || result === '0x') {
+                    throw new Error('Aucune réponse du contrat');
+                }
+                
+                // Parser le résultat
+                const resultHex = result.substring(2);
+                
+                // Vérifier la longueur minimale
+                if (resultHex.length < 128) {
+                    throw new Error('Réponse invalide du contrat');
+                }
+                
+                const arrayLength = parseInt(resultHex.substring(64, 128), 16);
+                console.log(`📊 Nombre d'éléments dans le résultat: ${arrayLength}`);
+                
+                if (arrayLength < 2) {
+                    throw new Error('Résultat incomplet');
+                }
+                
+                // Le dernier élément est à la position (arrayLength - 1) * 64 après le début du tableau
+                const lastElementOffset = 128 + (arrayLength - 1) * 64;
+                const amountOut = BigInt('0x' + resultHex.substring(lastElementOffset, lastElementOffset + 64));
+                
+                console.log(`💰 ${dexName} - AmountOut:`, amountOut.toString(), `(${(Number(amountOut) / 1e18).toFixed(6)})`);
+                
+                if (amountOut <= 0n) {
+                    throw new Error('Montant de sortie invalide');
+                }
+                
+                return amountOut;
+            } catch (error) {
+                console.error(`❌ Erreur ${dexName}:`, error);
+                throw new Error(`${dexName}: ${error.message}`);
+            }
         }
 
         function displayComparisonResults(results, amount, slippage, crypto) {
@@ -1122,7 +1241,7 @@
             const bestResult = results.find(r => r.success);
             const bestAmountOut = bestResult ? bestResult.amountOut : 0n;
             
-            let html = '';
+            let html = '<h3 style="margin-bottom: 20px;">📊 Résultats de la comparaison</h3>';
             
             results.forEach((result, index) => {
                 const isBest = index === 0 && result.success;
@@ -1130,9 +1249,12 @@
                 const pricePerToken = result.success ? (amount / (Number(result.amountOut) / 1e18)).toFixed(4) : 'N/A';
                 
                 let savingsPercent = '';
+                let savingsAmount = '';
                 if (result.success && bestAmountOut > 0n && result.amountOut < bestAmountOut) {
                     const diff = Number(bestAmountOut - result.amountOut) / Number(bestAmountOut) * 100;
+                    const diffAmount = (Number(bestAmountOut - result.amountOut) / 1e18).toFixed(6);
                     savingsPercent = `(-${diff.toFixed(2)}%)`;
+                    savingsAmount = `-${diffAmount} ${crypto.symbol}`;
                 }
                 
                 html += `
@@ -1156,20 +1278,35 @@
                                     <div class="dex-detail-value">${pricePerToken} USDT</div>
                                 </div>
                             </div>
-                            ${savingsPercent ? `<div style="margin-top: 10px; color: #dc3545; font-weight: bold;">⚠️ ${savingsPercent} moins avantageux que le meilleur prix</div>` : ''}
+                            ${savingsPercent ? `
+                                <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 8px; color: #856404;">
+                                    <strong>⚠️ ${savingsPercent}</strong> moins avantageux<br>
+                                    <small>Vous perdriez ${savingsAmount} par rapport au meilleur prix</small>
+                                </div>
+                            ` : ''}
                         ` : `
-                            <div style="color: #dc3545; margin-top: 10px;">
-                                ❌ Indisponible ou erreur
+                            <div style="color: #dc3545; margin-top: 10px; padding: 10px; background: #f8d7da; border-radius: 8px;">
+                                <strong>❌ Indisponible</strong><br>
+                                <small style="color: #721c24;">${result.error || 'Pas de liquidité pour cette paire'}</small>
                             </div>
                         `}
                     </div>
                 `;
             });
             
+            const validResults = results.filter(r => r.success);
+            const savingsInfo = validResults.length > 1 ? `
+                <div class="alert alert-success" style="margin-top: 15px;">
+                    <strong>💡 Info :</strong> En utilisant ${bestResult.name}, vous obtenez le meilleur prix parmi ${validResults.length} agrégateurs disponibles !
+                </div>
+            ` : '';
+            
+            html += savingsInfo;
+            
             html += `
                 <div class="comparison-actions">
                     <button class="btn btn-success" onclick='executePurchaseWithBest(${amount}, ${slippage}, ${JSON.stringify(crypto)}, ${JSON.stringify(bestResult)})' style="flex: 1;">
-                        ✅ Acheter avec le meilleur prix (${bestResult.name})
+                        ✅ Acheter avec ${bestResult.name} (Meilleur prix)
                     </button>
                     <button class="btn btn-danger" onclick="closeComparison()" style="flex: 0.3;">
                         ❌ Annuler
@@ -1373,7 +1510,7 @@
                 const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
                 
                 // Calculer le minimum avec slippage
-                const quote = await getQuoteFromDex(routerAddress, amountInWei, path);
+                const quote = await getQuoteFromDex(routerAddress, amountInWei, path, dexName);
                 const slippageFactor = 1 - (slippage / 100);
                 const amountOutMin = BigInt(Math.floor(Number(quote) * slippageFactor));
                 
@@ -1516,6 +1653,27 @@
                 document.getElementById('connectBtn').textContent = 'MetaMask non installé';
             }
         });
+
+        function toggleDebugInfo() {
+            alert(`🔍 Logs de Debug
+
+Pour voir les détails de la comparaison des agrégateurs :
+
+1. Appuyez sur F12 (ou Cmd+Option+I sur Mac)
+2. Cliquez sur l'onglet "Console"
+3. Vous verrez tous les détails en temps réel :
+   - Adresses des contrats
+   - Montants envoyés/reçus
+   - Erreurs détaillées
+   - Prix de chaque DEX
+
+Les logs commencent par des emojis :
+🚀 = Démarrage
+🔍 = Récupération de prix
+✅ = Succès
+❌ = Erreur
+💰 = Résultat`);
+        }
     </script>
 </body>
 </html>
